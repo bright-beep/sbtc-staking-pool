@@ -50,3 +50,12 @@
 (define-data-var last-update-time uint u0)
 (define-data-var reward-per-token uint u0)
 (define-data-var emergency-mode bool false)
+
+;; Data Maps
+(define-map user-deposits principal uint)
+(define-map user-rewards principal uint)
+(define-map user-reward-paid principal uint)
+(define-map staking-time principal uint)
+(define-map delegation-info { delegator: principal } { delegate: principal })
+(define-map cooldown-period principal uint)
+(define-map slashed-addresses principal bool)
