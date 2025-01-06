@@ -41,3 +41,12 @@
 (define-constant TIER1_BONUS u10) ;; 10% bonus
 (define-constant TIER2_BONUS u25) ;; 25% bonus
 (define-constant SLASH_RATE u50) ;; 50% slash rate
+
+;; Data Variables
+(define-data-var contract-initialized bool false)
+(define-data-var pool-paused bool false)
+(define-data-var total-liquidity uint u0)
+(define-data-var total-rewards uint u0)
+(define-data-var last-update-time uint u0)
+(define-data-var reward-per-token uint u0)
+(define-data-var emergency-mode bool false)
