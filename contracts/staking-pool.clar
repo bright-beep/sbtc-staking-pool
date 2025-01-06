@@ -204,3 +204,25 @@
         (map-set user-deposits address (- current-deposit slash-amount))
         (var-set total-liquidity (- (var-get total-liquidity) slash-amount))
         (ok true))))
+
+;; Read-only Functions
+(define-read-only (get-user-info (user principal))
+    (ok {
+        deposit: (default-to u0 (map-get? user-deposits user)),
+        rewards: (unwrap-panic (calculate-rewards user)),
+        staking-time: (default-to u0 (map-get? staking-time user)),
+        is-slashed: (default-to false (map-get? slashed-addresses user)),
+        cooldown-end: (default-to u0 (map-get? cooldown-period user))
+    }))
+
+(define-read-only (get-pool-info)
+    (ok {
+        total-liquidity: (var-get total-liquidity),
+        total-rewards: (var-get total-rewards),
+        is-paused: (var-get pool-paused),
+        emergency-mode: (var-get emergency-mode),
+        current-time: (unwrap-panic (get-block-info? time u0))
+    }))
+
+(define-read-only (get-delegation-info (delegator principal))
+    (ok (map-get? delegation-info {delegator: delegator})))
