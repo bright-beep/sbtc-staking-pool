@@ -104,3 +104,36 @@
         (ok true))
         (ok false)))
 )
+
+;; Public Functions
+(define-public (initialize)
+    (begin
+        (asserts! (is-authorized) ERR_NOT_AUTHORIZED)
+        (asserts! (not (var-get contract-initialized)) ERR_ALREADY_INITIALIZED)
+        (var-set contract-initialized true)
+        (var-set last-update-time (unwrap-panic (get-block-info? time u0)))
+        (ok true)))
+
+(define-public (deposit (amount uint))
+    (begin
+        (try! (check-initialized))
+        (try! (check-not-paused))
+        (asserts! (>= amount MINIMUM_DEPOSIT) ERR_INVALID_AMOUNT)
+        (asserts! (<= (+ (var-get total-liquidity) amount) MAXIMUM_POOL_SIZE) ERR_POOL_FULL)
+        
+        (try! (update-reward tx-sender))
+        
+        ;; Check for cooldown period
+        (let ((cooldown-end (default-to u0 (map-get? cooldown-period tx-sender))))
+            (asserts! (<= cooldown-end (unwrap-panic (get-block-info? time u0))) ERR_COOLDOWN_ACTIVE))
+        
+        (try! (contract-call? .sbtc transfer amount tx-sender (as-contract tx-sender)))
+        
+        (let (
+            (current-deposit (default-to u0 (map-get? user-deposits tx-sender)))
+            (new-deposit (+ current-deposit amount))
+        )
+        (map-set user-deposits tx-sender new-deposit)
+        (var-set total-liquidity (+ (var-get total-liquidity) amount))
+        (map-set staking-time tx-sender (unwrap-panic (get-block-info? time u0)))
+        (ok true))))
