@@ -137,3 +137,44 @@
         (var-set total-liquidity (+ (var-get total-liquidity) amount))
         (map-set staking-time tx-sender (unwrap-panic (get-block-info? time u0)))
         (ok true))))
+
+(define-public (delegate-stake (delegate-to principal))
+    (begin
+        (asserts! (not (is-eq tx-sender delegate-to)) ERR_INVALID_DELEGATION)
+        (map-set delegation-info {delegator: tx-sender} {delegate: delegate-to})
+        (ok true)))
+
+(define-public (start-withdrawal (amount uint))
+    (begin
+        (try! (check-initialized))
+        (try! (check-not-paused))
+        
+        (let (
+            (current-deposit (default-to u0 (map-get? user-deposits tx-sender)))
+            (current-time (unwrap-panic (get-block-info? time u0)))
+        )
+        (asserts! (>= current-deposit amount) ERR_INSUFFICIENT_BALANCE)
+        (map-set cooldown-period tx-sender (+ current-time COOLDOWN_PERIOD))
+        (ok true))))
+
+(define-public (complete-withdrawal (amount uint))
+    (begin
+        (try! (check-initialized))
+        (try! (check-not-paused))
+        
+        (let (
+            (current-deposit (default-to u0 (map-get? user-deposits tx-sender)))
+            (cooldown-end (default-to u0 (map-get? cooldown-period tx-sender)))
+            (current-time (unwrap-panic (get-block-info? time u0)))
+        )
+        (asserts! (>= current-deposit amount) ERR_INSUFFICIENT_BALANCE)
+        (asserts! (>= current-time cooldown-end) ERR_COOLDOWN_ACTIVE)
+        
+        (try! (update-reward tx-sender))
+        
+        (try! (as-contract (contract-call? .sbtc transfer amount (as-contract tx-sender) tx-sender)))
+        
+        (map-set user-deposits tx-sender (- current-deposit amount))
+        (var-set total-liquidity (- (var-get total-liquidity) amount))
+        (map-delete cooldown-period tx-sender)
+        (ok true))))
