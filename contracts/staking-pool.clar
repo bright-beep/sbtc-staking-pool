@@ -59,3 +59,48 @@
 (define-map delegation-info { delegator: principal } { delegate: principal })
 (define-map cooldown-period principal uint)
 (define-map slashed-addresses principal bool)
+
+;; Access Control
+(define-private (is-authorized)
+    (or (is-eq tx-sender CONTRACT_OWNER)
+        (is-eq tx-sender POOL_ADMIN)
+		)
+)
+
+(define-private (check-initialized)
+    (ok (asserts! (var-get contract-initialized) ERR_NOT_INITIALIZED)
+	)
+)
+
+(define-private (check-not-paused)
+    (ok (asserts! (not (var-get pool-paused)) ERR_POOL_PAUSED)
+	)
+)
+
+;; Reward Calculation
+(define-private (calculate-tier-multiplier (staking-duration uint))
+    (cond
+        ((>= staking-duration TIER2_THRESHOLD) (+ u100 TIER2_BONUS))
+        ((>= staking-duration TIER1_THRESHOLD) (+ u100 TIER1_BONUS))
+        true u100)
+)
+
+(define-private (update-reward (user principal))
+    (let (
+        (current-time (unwrap-panic (get-block-info? time u0)))
+        (time-delta (- current-time (var-get last-update-time)))
+        (user-balance (default-to u0 (map-get? user-deposits user)))
+        (staking-duration (- current-time (default-to u0 (map-get? staking-time user))))
+        (tier-multiplier (calculate-tier-multiplier staking-duration))
+    )
+    (if (> (var-get total-liquidity) u0)
+        (let (
+            (new-reward-per-token (+ (var-get reward-per-token) 
+                (* (* (* REWARD_RATE time-delta) tier-multiplier) u1000000)))
+        )
+        (var-set reward-per-token new-reward-per-token)
+        (var-set last-update-time current-time)
+        (map-set user-reward-paid user new-reward-per-token)
+        (ok true))
+        (ok false)))
+)
