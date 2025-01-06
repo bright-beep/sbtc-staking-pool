@@ -178,3 +178,29 @@
         (var-set total-liquidity (- (var-get total-liquidity) amount))
         (map-delete cooldown-period tx-sender)
         (ok true))))
+
+(define-public (emergency-withdraw)
+    (begin
+        (asserts! (var-get emergency-mode) ERR_NOT_AUTHORIZED)
+        (let (
+            (current-deposit (default-to u0 (map-get? user-deposits tx-sender)))
+        )
+        (asserts! (> current-deposit u0) ERR_INSUFFICIENT_BALANCE)
+        
+        (try! (as-contract (contract-call? .sbtc transfer current-deposit (as-contract tx-sender) tx-sender)))
+        
+        (map-set user-deposits tx-sender u0)
+        (var-set total-liquidity (- (var-get total-liquidity) current-deposit))
+        (ok true))))
+
+(define-public (slash-address (address principal))
+    (begin
+        (asserts! (is-authorized) ERR_NOT_AUTHORIZED)
+        (let (
+            (current-deposit (default-to u0 (map-get? user-deposits address)))
+            (slash-amount (/ (* current-deposit SLASH_RATE) u100))
+        )
+        (map-set slashed-addresses address true)
+        (map-set user-deposits address (- current-deposit slash-amount))
+        (var-set total-liquidity (- (var-get total-liquidity) slash-amount))
+        (ok true))))
