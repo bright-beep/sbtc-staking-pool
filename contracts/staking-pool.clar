@@ -30,3 +30,14 @@
 (define-constant ERR_POOL_FULL (err u107))
 (define-constant ERR_INVALID_DELEGATION (err u108))
 (define-constant ERR_COOLDOWN_ACTIVE (err u109))
+
+;; Pool Configuration
+(define-constant REWARD_RATE u100000) 
+(define-constant MINIMUM_DEPOSIT u1000000)
+(define-constant MAXIMUM_POOL_SIZE u1000000000000)
+(define-constant COOLDOWN_PERIOD u144) ;; ~24 hours in blocks
+(define-constant TIER1_THRESHOLD u4320) ;; 30 days in blocks
+(define-constant TIER2_THRESHOLD u8640) ;; 60 days in blocks
+(define-constant TIER1_BONUS u10) ;; 10% bonus
+(define-constant TIER2_BONUS u25) ;; 25% bonus
+(define-constant SLASH_RATE u50) ;; 50% slash rate
