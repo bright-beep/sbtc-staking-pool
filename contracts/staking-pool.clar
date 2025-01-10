@@ -16,6 +16,12 @@
 ;; to each user's stake in the pool. The contract includes safety features
 ;; like pause functionality and minimum deposit requirements.
 
+;; Define the sBTC trait
+(define-trait sbtc-token-trait
+    (
+        (transfer (uint principal principal) (response bool uint))
+    )
+)
 
 ;; Constants
 (define-constant CONTRACT_OWNER tx-sender)
@@ -30,6 +36,11 @@
 (define-constant ERR_POOL_FULL (err u107))
 (define-constant ERR_INVALID_DELEGATION (err u108))
 (define-constant ERR_COOLDOWN_ACTIVE (err u109))
+(define-constant ERR_REWARD_UPDATE_FAILED (err u110))
+
+;; Define contract variables for sBTC token contract
+(define-data-var sbtc-token-contract principal 'ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM.sbtc)
+
 
 ;; Pool Configuration
 (define-constant REWARD_RATE u100000) 
@@ -79,10 +90,23 @@
 
 ;; Reward Calculation
 (define-private (calculate-tier-multiplier (staking-duration uint))
-    (cond
-        ((>= staking-duration TIER2_THRESHOLD) (+ u100 TIER2_BONUS))
-        ((>= staking-duration TIER1_THRESHOLD) (+ u100 TIER1_BONUS))
-        true u100)
+    (if (>= staking-duration TIER2_THRESHOLD)
+        (+ u100 TIER2_BONUS)
+        (if (>= staking-duration TIER1_THRESHOLD)
+            (+ u100 TIER1_BONUS)
+            u100
+		)
+	)
+)
+
+(define-private (calculate-rewards (user principal))
+    (let (
+        (user-balance (default-to u0 (map-get? user-deposits user)))
+        (user-reward-debt (default-to u0 (map-get? user-reward-paid user)))
+    )
+    (ok (if (> user-balance u0)
+            (* user-balance (- (var-get reward-per-token) user-reward-debt))
+            u0)))
 )
 
 (define-private (update-reward (user principal))
@@ -102,8 +126,7 @@
         (var-set last-update-time current-time)
         (map-set user-reward-paid user new-reward-per-token)
         (ok true))
-        (ok false)))
-)
+        ERR_REWARD_UPDATE_FAILED)))
 
 ;; Public Functions
 (define-public (initialize)
@@ -114,7 +137,7 @@
         (var-set last-update-time (unwrap-panic (get-block-info? time u0)))
         (ok true)))
 
-(define-public (deposit (amount uint))
+(define-public (deposit (amount uint) (token <sbtc-token-trait>))
     (begin
         (try! (check-initialized))
         (try! (check-not-paused))
@@ -127,7 +150,7 @@
         (let ((cooldown-end (default-to u0 (map-get? cooldown-period tx-sender))))
             (asserts! (<= cooldown-end (unwrap-panic (get-block-info? time u0))) ERR_COOLDOWN_ACTIVE))
         
-        (try! (contract-call? .sbtc transfer amount tx-sender (as-contract tx-sender)))
+        (try! (contract-call? token transfer amount tx-sender (as-contract tx-sender)))
         
         (let (
             (current-deposit (default-to u0 (map-get? user-deposits tx-sender)))
@@ -137,6 +160,7 @@
         (var-set total-liquidity (+ (var-get total-liquidity) amount))
         (map-set staking-time tx-sender (unwrap-panic (get-block-info? time u0)))
         (ok true))))
+
 
 (define-public (delegate-stake (delegate-to principal))
     (begin
@@ -157,7 +181,8 @@
         (map-set cooldown-period tx-sender (+ current-time COOLDOWN_PERIOD))
         (ok true))))
 
-(define-public (complete-withdrawal (amount uint))
+
+(define-public (complete-withdrawal (amount uint) (token <sbtc-token-trait>))
     (begin
         (try! (check-initialized))
         (try! (check-not-paused))
@@ -172,14 +197,14 @@
         
         (try! (update-reward tx-sender))
         
-        (try! (as-contract (contract-call? .sbtc transfer amount (as-contract tx-sender) tx-sender)))
+        (try! (as-contract (contract-call? token transfer amount (as-contract tx-sender) tx-sender)))
         
         (map-set user-deposits tx-sender (- current-deposit amount))
         (var-set total-liquidity (- (var-get total-liquidity) amount))
         (map-delete cooldown-period tx-sender)
         (ok true))))
 
-(define-public (emergency-withdraw)
+(define-public (emergency-withdraw (token <sbtc-token-trait>))
     (begin
         (asserts! (var-get emergency-mode) ERR_NOT_AUTHORIZED)
         (let (
@@ -187,7 +212,7 @@
         )
         (asserts! (> current-deposit u0) ERR_INSUFFICIENT_BALANCE)
         
-        (try! (as-contract (contract-call? .sbtc transfer current-deposit (as-contract tx-sender) tx-sender)))
+        (try! (as-contract (contract-call? token transfer current-deposit (as-contract tx-sender) tx-sender)))
         
         (map-set user-deposits tx-sender u0)
         (var-set total-liquidity (- (var-get total-liquidity) current-deposit))
