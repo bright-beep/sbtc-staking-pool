@@ -78,6 +78,17 @@
 		)
 )
 
+;; Add token validation function
+(define-private (is-valid-token (token <sbtc-token-trait>))
+    (is-eq (contract-of token) (var-get sbtc-token-contract)))
+
+;; Add address validation function
+(define-private (is-valid-address (address principal))
+    (and 
+        (not (is-eq address CONTRACT_OWNER))
+        (not (is-eq address (as-contract tx-sender)))
+        (not (is-eq address POOL_ADMIN))))
+
 (define-private (check-initialized)
     (ok (asserts! (var-get contract-initialized) ERR_NOT_INITIALIZED)
 	)
@@ -141,13 +152,12 @@
     (begin
         (try! (check-initialized))
         (try! (check-not-paused))
+        (asserts! (is-valid-token token) ERR_NOT_AUTHORIZED)
         (asserts! (>= amount MINIMUM_DEPOSIT) ERR_INVALID_AMOUNT)
         (asserts! (<= (+ (var-get total-liquidity) amount) MAXIMUM_POOL_SIZE) ERR_POOL_FULL)
         
-        ;; Simply use try! instead of match since update-reward already returns (response bool uint)
         (try! (update-reward tx-sender))
         
-        ;; Check for cooldown period
         (let ((cooldown-end (default-to u0 (map-get? cooldown-period tx-sender))))
             (asserts! (<= cooldown-end (unwrap-panic (get-block-info? time u0))) ERR_COOLDOWN_ACTIVE))
         
@@ -161,7 +171,6 @@
         (var-set total-liquidity (+ (var-get total-liquidity) amount))
         (map-set staking-time tx-sender (unwrap-panic (get-block-info? time u0)))
         (ok true))))
-
 
 (define-public (delegate-stake (delegate-to principal))
     (begin
@@ -187,6 +196,7 @@
     (begin
         (try! (check-initialized))
         (try! (check-not-paused))
+        (asserts! (is-valid-token token) ERR_NOT_AUTHORIZED)
         
         (let (
             (current-deposit (default-to u0 (map-get? user-deposits tx-sender)))
@@ -196,7 +206,6 @@
         (asserts! (>= current-deposit amount) ERR_INSUFFICIENT_BALANCE)
         (asserts! (>= current-time cooldown-end) ERR_COOLDOWN_ACTIVE)
         
-        ;; Simply use try! here as well
         (try! (update-reward tx-sender))
         
         (try! (as-contract (contract-call? token transfer amount (as-contract tx-sender) tx-sender)))
@@ -209,6 +218,8 @@
 (define-public (emergency-withdraw (token <sbtc-token-trait>))
     (begin
         (asserts! (var-get emergency-mode) ERR_NOT_AUTHORIZED)
+        (asserts! (is-valid-token token) ERR_NOT_AUTHORIZED)
+        
         (let (
             (current-deposit (default-to u0 (map-get? user-deposits tx-sender)))
         )
@@ -223,10 +234,15 @@
 (define-public (slash-address (address principal))
     (begin
         (asserts! (is-authorized) ERR_NOT_AUTHORIZED)
+        (asserts! (is-valid-address address) ERR_NOT_AUTHORIZED)
+        
         (let (
             (current-deposit (default-to u0 (map-get? user-deposits address)))
             (slash-amount (/ (* current-deposit SLASH_RATE) u100))
         )
+        ;; Check that there's actually something to slash
+        (asserts! (> current-deposit u0) ERR_INSUFFICIENT_BALANCE)
+        
         (map-set slashed-addresses address true)
         (map-set user-deposits address (- current-deposit slash-amount))
         (var-set total-liquidity (- (var-get total-liquidity) slash-amount))
