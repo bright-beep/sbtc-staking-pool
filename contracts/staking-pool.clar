@@ -144,6 +144,7 @@
         (asserts! (>= amount MINIMUM_DEPOSIT) ERR_INVALID_AMOUNT)
         (asserts! (<= (+ (var-get total-liquidity) amount) MAXIMUM_POOL_SIZE) ERR_POOL_FULL)
         
+        ;; Simply use try! instead of match since update-reward already returns (response bool uint)
         (try! (update-reward tx-sender))
         
         ;; Check for cooldown period
@@ -195,6 +196,7 @@
         (asserts! (>= current-deposit amount) ERR_INSUFFICIENT_BALANCE)
         (asserts! (>= current-time cooldown-end) ERR_COOLDOWN_ACTIVE)
         
+        ;; Simply use try! here as well
         (try! (update-reward tx-sender))
         
         (try! (as-contract (contract-call? token transfer amount (as-contract tx-sender) tx-sender)))
